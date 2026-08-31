@@ -11,7 +11,8 @@ final class Integrity {
             State.class,
             AgentCheck.class,
             Integrity.class,
-            LegacyBlocker.class
+            LegacyBlocker.class,
+            RuntimeEventMonitor.class
     };
 
     private Integrity() {
@@ -21,7 +22,7 @@ final class Integrity {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (Class<?> type : CORE) {
-                digest.update(read(type));
+                update(digest, type);
             }
             byte[] hash = digest.digest();
             return new Baseline(hash, fold(hash));
@@ -39,6 +40,19 @@ final class Integrity {
             return new Result(false, true, 0L);
         }
         return new Result(Arrays.equals(baseline.hash, current.hash), false, current.token);
+    }
+
+    private static void update(MessageDigest digest, Class<?> type) throws Exception {
+        byte[] name = type.getName().getBytes("UTF-8");
+        digest.update((byte) (name.length >>> 8));
+        digest.update((byte) name.length);
+        digest.update(name);
+        byte[] bytes = read(type);
+        digest.update((byte) (bytes.length >>> 24));
+        digest.update((byte) (bytes.length >>> 16));
+        digest.update((byte) (bytes.length >>> 8));
+        digest.update((byte) bytes.length);
+        digest.update(bytes);
     }
 
     private static byte[] read(Class<?> type) throws Exception {
