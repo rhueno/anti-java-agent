@@ -2,6 +2,7 @@ package dev.rhueno.antiagent;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -50,6 +51,15 @@ final class AgentCheck {
             }
         }
 
+        String effectiveAttachDisabled = effectiveVmOption("DisableAttachMechanism");
+        if ("true".equalsIgnoreCase(effectiveAttachDisabled)) {
+            attachDisabled = true;
+        }
+        String effectiveDynamicLoading = effectiveVmOption("EnableDynamicAgentLoading");
+        if ("false".equalsIgnoreCase(effectiveDynamicLoading)) {
+            dynamicAgentDisabled = true;
+        }
+
         return new Result(
                 javaAgent,
                 nativeAgent,
@@ -85,6 +95,25 @@ final class AgentCheck {
             return Integer.parseInt(version);
         } catch (NumberFormatException ignored) {
             return 8;
+        }
+    }
+
+    private static String effectiveVmOption(String name) {
+        try {
+            Class<?> beanType = Class.forName("com.sun.management.HotSpotDiagnosticMXBean");
+            Method platformBean = ManagementFactory.class.getMethod("getPlatformMXBean", Class.class);
+            Object bean = platformBean.invoke(null, beanType);
+            if (bean == null) {
+                return null;
+            }
+            Object option = beanType.getMethod("getVMOption", String.class).invoke(bean, name);
+            if (option == null) {
+                return null;
+            }
+            Object value = option.getClass().getMethod("getValue").invoke(option);
+            return value == null ? null : String.valueOf(value);
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 
