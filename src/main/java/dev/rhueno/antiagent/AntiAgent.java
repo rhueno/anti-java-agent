@@ -137,11 +137,14 @@ public final class AntiAgent {
             initialAttachListener = Boolean.valueOf(check.attachListenerObserved);
             attachListenerAtInstall = initialAttachListener;
         }
-        boolean attachListenerAppeared = !initialAttachListener.booleanValue() && check.attachListenerObserved;
+        boolean attachListenerPresentAtInstall = initialAttachListener.booleanValue();
+        boolean attachListenerAppeared = !attachListenerPresentAtInstall && check.attachListenerObserved;
         List<String> findings = new ArrayList<String>();
         findings.addAll(check.findings);
 
-        if (attachListenerAppeared) {
+        if (attachListenerPresentAtInstall) {
+            findings.add("attach listener available at protection initialization");
+        } else if (attachListenerAppeared) {
             findings.add("attach listener appeared after protection initialization");
         }
         if (agentEvent) {
@@ -166,7 +169,7 @@ public final class AntiAgent {
         if (integrity.unsupported) {
             state = State.UNSUPPORTED;
         }
-        if (check.dynamicAgentEnabled || check.selfAttachEnabled || attachListenerAppeared || runtimeTransformation || monitorFailed) {
+        if (check.dynamicAgentEnabled || check.selfAttachEnabled || attachListenerPresentAtInstall || attachListenerAppeared || runtimeTransformation || monitorFailed) {
             state = State.SUSPICIOUS;
         }
         if (check.javaAgent || check.nativeAgent || agentEvent || coreRuntimeTransformation || (!integrity.intact && !integrity.unsupported)) {
