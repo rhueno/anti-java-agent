@@ -4,8 +4,6 @@ a small java instrumentation hardening utility for detecting startup agents, run
 
 ### how does it work?
 
-it checks vm arguments for java and native agents, observes attach state and tracks dynamic agent activity on supported runtimes.
+it checks vm arguments for [java agents](https://docs.oracle.com/javase/7/docs/api/java/lang/instrument/package-summary.html) and native agents, observes attach state and tracks dynamic agent activity on supported runtimes.
 
 java 8 includes an optional legacy blocker for late java agent loading. newer hotspot runtimes can be hardened further by disabling the attach mechanism and dynamic agent loading.
-
-### build
