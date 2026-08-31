@@ -34,11 +34,15 @@ final class AgentCheck {
 
             if ("-XX:+EnableDynamicAgentLoading".equals(value)) {
                 dynamicAgentEnabled = true;
+                dynamicAgentDisabled = false;
                 findings.add("dynamic agent loading explicitly enabled");
             } else if ("-XX:-EnableDynamicAgentLoading".equals(value)) {
+                dynamicAgentEnabled = false;
                 dynamicAgentDisabled = true;
             } else if ("-XX:+DisableAttachMechanism".equals(value)) {
                 attachDisabled = true;
+            } else if ("-XX:-DisableAttachMechanism".equals(value)) {
+                attachDisabled = false;
             } else if ("-XX:+StartAttachListener".equals(value)) {
                 attachListenerRequested = true;
                 findings.add("attach listener explicitly requested at startup");
@@ -52,12 +56,13 @@ final class AgentCheck {
         }
 
         String effectiveAttachDisabled = effectiveVmOption("DisableAttachMechanism");
-        if ("true".equalsIgnoreCase(effectiveAttachDisabled)) {
-            attachDisabled = true;
+        if (effectiveAttachDisabled != null) {
+            attachDisabled = Boolean.parseBoolean(effectiveAttachDisabled);
         }
         String effectiveDynamicLoading = effectiveVmOption("EnableDynamicAgentLoading");
-        if ("false".equalsIgnoreCase(effectiveDynamicLoading)) {
-            dynamicAgentDisabled = true;
+        if (effectiveDynamicLoading != null) {
+            dynamicAgentEnabled = Boolean.parseBoolean(effectiveDynamicLoading);
+            dynamicAgentDisabled = !dynamicAgentEnabled;
         }
 
         boolean attachTriggerObserved = observeAttachTrigger();
