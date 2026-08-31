@@ -1,6 +1,5 @@
 package dev.rhueno.antiagent;
 
-import java.lang.management.ManagementFactory;
 import java.util.List;
 
 public final class Main {
@@ -17,7 +16,8 @@ public final class Main {
         System.out.println("version -> " + AntiAgent.VERSION);
         System.out.println("java -> " + snapshot.javaVersion());
         System.out.println("vm -> " + snapshot.vmName());
-        System.out.println("pid -> " + pid());
+        String pid = AgentCheck.pid();
+        System.out.println("pid -> " + (pid == null ? "unknown" : pid));
         print(snapshot);
 
         if (expected != null && snapshot.state() != expected) {
@@ -105,11 +105,5 @@ public final class Main {
             builder.append(values.get(i));
         }
         return builder.toString();
-    }
-
-    private static String pid() {
-        String name = ManagementFactory.getRuntimeMXBean().getName();
-        int separator = name.indexOf('@');
-        return separator < 0 ? name : name.substring(0, separator);
     }
 }
