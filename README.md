@@ -1,30 +1,11 @@
 ## anti-java-agent
-A small utility for detecting and limiting Java instrumentation.
 
-It detects startup Java/native agents, watches dynamic agent activity on supported JDKs, checks its packaged classes and exposes a protection state that can be used by applications or obfuscators.
+a small java instrumentation hardening utility for detecting startup agents, runtime attachment and integrity changes.
 
-This does not make native/JVMTI instrumentation impossible.
+### how does it work?
 
-### Build
+it checks vm arguments for java and native agents, observes attach state and tracks dynamic agent activity on supported runtimes.
 
-```
-mvn clean package
-```
+java 8 includes an optional legacy blocker for late java agent loading. newer hotspot runtimes can be hardened further by disabling the attach mechanism and dynamic agent loading.
 
-### Run
-
-```
-java -jar target/anti-java-agent.jar
-```
-
-For HotSpot applications where attach is not needed:
-
-```
-java -XX:+DisableAttachMechanism -XX:-EnableDynamicAgentLoading -jar app.jar
-```
-
-Java 8 has an optional legacy blocker:
-
-```
-java -jar target/anti-java-agent.jar --legacy-blocker
-```
+### build
