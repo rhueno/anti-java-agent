@@ -124,6 +124,8 @@ public final class AntiAgent {
             monitor.poll();
         }
         boolean agentEvent = monitor != null && monitor.agentObserved();
+        boolean runtimeTransformation = monitor != null && monitor.transformationObserved();
+        boolean coreRuntimeTransformation = monitor != null && monitor.coreTransformationObserved();
         boolean monitorActive = monitor != null && monitor.active();
         LegacyBlocker.Result blocker = legacyBlocker;
         boolean legacyBlockerSupported = blocker != null && blocker.supported;
@@ -144,6 +146,11 @@ public final class AntiAgent {
         if (agentEvent) {
             findings.add("JFR agent event observed after protection initialization");
         }
+        if (coreRuntimeTransformation) {
+            findings.add("protected class redefinition observed at runtime");
+        } else if (runtimeTransformation) {
+            findings.add("runtime class redefinition or retransformation observed");
+        }
         if (!integrity.intact && !integrity.unsupported) {
             findings.add("core class resource integrity changed");
         }
@@ -155,10 +162,10 @@ public final class AntiAgent {
         if (integrity.unsupported) {
             state = State.UNSUPPORTED;
         }
-        if (check.dynamicAgentEnabled || check.selfAttachEnabled || attachListenerAppeared) {
+        if (check.dynamicAgentEnabled || check.selfAttachEnabled || attachListenerAppeared || runtimeTransformation) {
             state = State.SUSPICIOUS;
         }
-        if (check.javaAgent || check.nativeAgent || agentEvent || (!integrity.intact && !integrity.unsupported)) {
+        if (check.javaAgent || check.nativeAgent || agentEvent || coreRuntimeTransformation || (!integrity.intact && !integrity.unsupported)) {
             state = State.COMPROMISED;
         }
 
