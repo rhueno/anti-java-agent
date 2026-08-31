@@ -39,7 +39,8 @@ final class AgentCheck {
                 attachDisabled = true;
             }
 
-            if (value.startsWith("-Djdk.attach.allowAttachSelf=") && value.endsWith("true")) {
+            String selfAttachPrefix = "-Djdk.attach.allowAttachSelf=";
+            if (value.startsWith(selfAttachPrefix) && Boolean.parseBoolean(value.substring(selfAttachPrefix.length()))) {
                 selfAttachEnabled = true;
                 findings.add("self attach explicitly enabled");
             }
