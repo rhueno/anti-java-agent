@@ -176,6 +176,12 @@ public final class AntiAgent {
             state = State.COMPROMISED;
         }
 
+        Snapshot previous = SNAPSHOT.get();
+        if (previous != null && previous.state() == State.COMPROMISED && state != State.COMPROMISED) {
+            findings.add("compromised state retained from earlier observation");
+            state = State.COMPROMISED;
+        }
+
         long environmentToken = BASELINE.token;
         environmentToken ^= check.attachDisabled ? 0x243f6a8885a308d3L : 0x13198a2e03707344L;
         environmentToken ^= check.dynamicAgentDisabled ? 0xa4093822299f31d0L : 0x082efa98ec4e6c89L;
