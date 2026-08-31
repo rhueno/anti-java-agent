@@ -177,6 +177,10 @@ public final class AntiAgent {
         environmentToken ^= check.attachDisabled ? 0x243f6a8885a308d3L : 0x13198a2e03707344L;
         environmentToken ^= check.dynamicAgentDisabled ? 0xa4093822299f31d0L : 0x082efa98ec4e6c89L;
         environmentToken ^= monitorActive ? 0x452821e638d01377L : 0xbe5466cf34e90c6cL;
+        environmentToken ^= monitorFailed ? 0x3f84d5b5b5470917L : 0x9216d5d98979fb1bL;
+        environmentToken ^= agentEvent ? 0xd1310ba698dfb5acL : 0x2ffd72dbd01adfb7L;
+        environmentToken ^= runtimeTransformation ? 0xb8e1afed6a267e96L : 0xba7c9045f12c7f99L;
+        environmentToken ^= coreRuntimeTransformation ? 0x24a19947b3916cf7L : 0x0801f2e2858efc16L;
         environmentToken ^= integrity.token;
         environmentToken ^= legacyBlockerEnabled ? 0x517cc1b727220a95L : 0x6c8e9cf570932bd5L;
         environmentToken ^= legacyBlockerActive ? 0x9e3779b97f4a7c15L : 0xc2b2ae3d27d4eb4fL;
