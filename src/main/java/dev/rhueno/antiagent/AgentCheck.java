@@ -19,6 +19,7 @@ final class AgentCheck {
         boolean selfAttachEnabled = false;
         boolean attachDisabled = false;
         boolean dynamicAgentDisabled = false;
+        boolean attachListenerRequested = false;
 
         for (String argument : arguments) {
             String value = argument == null ? "" : argument.trim();
@@ -37,6 +38,9 @@ final class AgentCheck {
                 dynamicAgentDisabled = true;
             } else if ("-XX:+DisableAttachMechanism".equals(value)) {
                 attachDisabled = true;
+            } else if ("-XX:+StartAttachListener".equals(value)) {
+                attachListenerRequested = true;
+                findings.add("attach listener explicitly requested at startup");
             }
 
             String selfAttachPrefix = "-Djdk.attach.allowAttachSelf=";
@@ -53,6 +57,7 @@ final class AgentCheck {
                 selfAttachEnabled,
                 attachDisabled,
                 dynamicAgentDisabled,
+                attachListenerRequested,
                 observeAttachListener(),
                 Collections.unmodifiableList(new ArrayList<String>(findings))
         );
@@ -134,16 +139,18 @@ final class AgentCheck {
         final boolean selfAttachEnabled;
         final boolean attachDisabled;
         final boolean dynamicAgentDisabled;
+        final boolean attachListenerRequested;
         final boolean attachListenerObserved;
         final List<String> findings;
 
-        Result(boolean javaAgent, boolean nativeAgent, boolean dynamicAgentEnabled, boolean selfAttachEnabled, boolean attachDisabled, boolean dynamicAgentDisabled, boolean attachListenerObserved, List<String> findings) {
+        Result(boolean javaAgent, boolean nativeAgent, boolean dynamicAgentEnabled, boolean selfAttachEnabled, boolean attachDisabled, boolean dynamicAgentDisabled, boolean attachListenerRequested, boolean attachListenerObserved, List<String> findings) {
             this.javaAgent = javaAgent;
             this.nativeAgent = nativeAgent;
             this.dynamicAgentEnabled = dynamicAgentEnabled;
             this.selfAttachEnabled = selfAttachEnabled;
             this.attachDisabled = attachDisabled;
             this.dynamicAgentDisabled = dynamicAgentDisabled;
+            this.attachListenerRequested = attachListenerRequested;
             this.attachListenerObserved = attachListenerObserved;
             this.findings = findings;
         }
