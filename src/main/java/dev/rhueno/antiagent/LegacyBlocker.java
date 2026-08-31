@@ -54,10 +54,8 @@ final class LegacyBlocker {
 
     private static boolean hasStartupAgent(List<String> arguments) {
         for (String argument : arguments) {
-            if (argument == null) {
-                continue;
-            }
-            if (argument.startsWith("-javaagent:") || argument.startsWith("-agentlib:") || argument.startsWith("-agentpath:")) {
+            String value = argument == null ? "" : argument.trim();
+            if (value.startsWith("-javaagent:") || value.startsWith("-agentlib:") || value.startsWith("-agentpath:")) {
                 return true;
             }
         }
