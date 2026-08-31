@@ -86,8 +86,10 @@ final class AgentCheck {
 
     static List<String> recommendedArguments() {
         List<String> result = new ArrayList<String>();
-        result.add("-XX:+DisableAttachMechanism");
-        if (javaMajor() >= 9) {
+        if (effectiveVmOption("DisableAttachMechanism") != null) {
+            result.add("-XX:+DisableAttachMechanism");
+        }
+        if (effectiveVmOption("EnableDynamicAgentLoading") != null) {
             result.add("-XX:-EnableDynamicAgentLoading");
         }
         return Collections.unmodifiableList(result);
