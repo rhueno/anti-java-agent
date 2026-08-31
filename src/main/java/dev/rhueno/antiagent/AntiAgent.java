@@ -1,9 +1,5 @@
 package dev.rhueno.antiagent;
 
-import java.lang.reflect.Method;
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -11,13 +7,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class AntiAgent {
-    public static final String VERSION = "0.1.6";
+    public static final String VERSION = "0.1.7";
 
     private static final AtomicBoolean INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
     private static final AtomicReference<Snapshot> SNAPSHOT = new AtomicReference<Snapshot>();
     private static final Integrity.Baseline BASELINE = Integrity.capture();
-    private static volatile AgentEventMonitor agentEventMonitor;
+    private static volatile RuntimeEventMonitor runtimeEventMonitor;
     private static volatile Thread watchdog;
     private static volatile Boolean attachListenerAtInstall;
     private static volatile LegacyBlocker.Result legacyBlocker;
@@ -39,7 +35,7 @@ public final class AntiAgent {
             RUNNING.set(true);
             legacyBlockerRequested = enableLegacyBlocker;
             legacyBlocker = enableLegacyBlocker ? LegacyBlocker.install() : LegacyBlocker.disabled();
-            agentEventMonitor = AgentEventMonitor.start();
+            runtimeEventMonitor = RuntimeEventMonitor.start();
             refresh();
             watchdog = new Thread(new Runnable() {
                 @Override
@@ -114,7 +110,7 @@ public final class AntiAgent {
         if (current != null) {
             current.interrupt();
         }
-        AgentEventMonitor monitor = agentEventMonitor;
+        RuntimeEventMonitor monitor = runtimeEventMonitor;
         if (monitor != null) {
             monitor.close();
         }
@@ -123,30 +119,45 @@ public final class AntiAgent {
     private static void refresh() {
         AgentCheck.Result check = AgentCheck.inspect();
         Integrity.Result integrity = Integrity.verify(BASELINE);
-        AgentEventMonitor monitor = agentEventMonitor;
+        RuntimeEventMonitor monitor = runtimeEventMonitor;
         if (monitor != null) {
             monitor.poll();
         }
-        boolean agentEvent = monitor != null && monitor.observed();
+
+        boolean runtimeAgentEvent = monitor != null && monitor.agentObserved();
+        boolean runtimeTransformation = monitor != null && monitor.transformationObserved();
+        boolean coreRuntimeTransformation = monitor != null && monitor.coreTransformationObserved();
         boolean monitorActive = monitor != null && monitor.active();
+        boolean monitorFailed = monitor != null && monitor.failed();
+
         LegacyBlocker.Result blocker = legacyBlocker;
         boolean legacyBlockerSupported = blocker != null && blocker.supported;
         boolean legacyBlockerActive = blocker != null && blocker.active;
         boolean legacyBlockerEnabled = legacyBlockerRequested;
+
         Boolean initialAttachListener = attachListenerAtInstall;
         if (initialAttachListener == null) {
             initialAttachListener = Boolean.valueOf(check.attachListenerObserved);
             attachListenerAtInstall = initialAttachListener;
         }
         boolean attachListenerAppeared = !initialAttachListener.booleanValue() && check.attachListenerObserved;
+
         List<String> findings = new ArrayList<String>();
         findings.addAll(check.findings);
 
         if (attachListenerAppeared) {
             findings.add("attach listener appeared after protection initialization");
         }
-        if (agentEvent) {
+        if (runtimeAgentEvent) {
             findings.add("JFR agent event observed after protection initialization");
+        }
+        if (coreRuntimeTransformation) {
+            findings.add("protected class redefinition observed at runtime");
+        } else if (runtimeTransformation) {
+            findings.add("runtime class redefinition or retransformation observed");
+        }
+        if (monitorFailed) {
+            findings.add("runtime event monitor failed");
         }
         if (!integrity.intact && !integrity.unsupported) {
             findings.add("core class resource integrity changed");
@@ -159,10 +170,10 @@ public final class AntiAgent {
         if (integrity.unsupported) {
             state = State.UNSUPPORTED;
         }
-        if (check.dynamicAgentEnabled || check.selfAttachEnabled || attachListenerAppeared) {
+        if (check.dynamicAgentEnabled || check.selfAttachEnabled || attachListenerAppeared || runtimeTransformation || monitorFailed) {
             state = State.SUSPICIOUS;
         }
-        if (check.javaAgent || check.nativeAgent || agentEvent || (!integrity.intact && !integrity.unsupported)) {
+        if (check.javaAgent || check.nativeAgent || runtimeAgentEvent || coreRuntimeTransformation || (!integrity.intact && !integrity.unsupported)) {
             state = State.COMPROMISED;
         }
 
@@ -170,6 +181,10 @@ public final class AntiAgent {
         environmentToken ^= check.attachDisabled ? 0x243f6a8885a308d3L : 0x13198a2e03707344L;
         environmentToken ^= check.dynamicAgentDisabled ? 0xa4093822299f31d0L : 0x082efa98ec4e6c89L;
         environmentToken ^= monitorActive ? 0x452821e638d01377L : 0xbe5466cf34e90c6cL;
+        environmentToken ^= monitorFailed ? 0x3f84d5b5b5470917L : 0x9216d5d98979fb1bL;
+        environmentToken ^= runtimeAgentEvent ? 0xd1310ba698dfb5acL : 0x2ffd72dbd01adfb7L;
+        environmentToken ^= runtimeTransformation ? 0xb8e1afed6a267e96L : 0xba7c9045f12c7f99L;
+        environmentToken ^= coreRuntimeTransformation ? 0x24a19947b3916cf7L : 0x0801f2e2858efc16L;
         environmentToken ^= integrity.token;
         environmentToken ^= legacyBlockerEnabled ? 0x517cc1b727220a95L : 0x6c8e9cf570932bd5L;
         environmentToken ^= legacyBlockerActive ? 0x9e3779b97f4a7c15L : 0xc2b2ae3d27d4eb4fL;
@@ -183,6 +198,9 @@ public final class AntiAgent {
                 check.dynamicAgentDisabled,
                 check.attachListenerObserved,
                 monitorActive,
+                monitorFailed,
+                runtimeTransformation,
+                coreRuntimeTransformation,
                 legacyBlockerSupported,
                 legacyBlockerEnabled,
                 legacyBlockerActive,
@@ -208,7 +226,10 @@ public final class AntiAgent {
         private final boolean attachDisabled;
         private final boolean dynamicAgentLoadingDisabled;
         private final boolean attachListenerObserved;
-        private final boolean jfrAgentMonitorActive;
+        private final boolean runtimeEventMonitorActive;
+        private final boolean runtimeEventMonitorFailed;
+        private final boolean runtimeTransformationObserved;
+        private final boolean coreRuntimeTransformationObserved;
         private final boolean legacyInstrumentationBlockerSupported;
         private final boolean legacyInstrumentationBlockerEnabled;
         private final boolean legacyInstrumentationBlockerActive;
@@ -216,14 +237,17 @@ public final class AntiAgent {
         private final List<String> findings;
         private final long environmentToken;
 
-        Snapshot(State state, String javaVersion, String vmName, boolean attachDisabled, boolean dynamicAgentLoadingDisabled, boolean attachListenerObserved, boolean jfrAgentMonitorActive, boolean legacyInstrumentationBlockerSupported, boolean legacyInstrumentationBlockerEnabled, boolean legacyInstrumentationBlockerActive, boolean integrityIntact, List<String> findings, long environmentToken) {
+        Snapshot(State state, String javaVersion, String vmName, boolean attachDisabled, boolean dynamicAgentLoadingDisabled, boolean attachListenerObserved, boolean runtimeEventMonitorActive, boolean runtimeEventMonitorFailed, boolean runtimeTransformationObserved, boolean coreRuntimeTransformationObserved, boolean legacyInstrumentationBlockerSupported, boolean legacyInstrumentationBlockerEnabled, boolean legacyInstrumentationBlockerActive, boolean integrityIntact, List<String> findings, long environmentToken) {
             this.state = state;
             this.javaVersion = javaVersion;
             this.vmName = vmName;
             this.attachDisabled = attachDisabled;
             this.dynamicAgentLoadingDisabled = dynamicAgentLoadingDisabled;
             this.attachListenerObserved = attachListenerObserved;
-            this.jfrAgentMonitorActive = jfrAgentMonitorActive;
+            this.runtimeEventMonitorActive = runtimeEventMonitorActive;
+            this.runtimeEventMonitorFailed = runtimeEventMonitorFailed;
+            this.runtimeTransformationObserved = runtimeTransformationObserved;
+            this.coreRuntimeTransformationObserved = coreRuntimeTransformationObserved;
             this.legacyInstrumentationBlockerSupported = legacyInstrumentationBlockerSupported;
             this.legacyInstrumentationBlockerEnabled = legacyInstrumentationBlockerEnabled;
             this.legacyInstrumentationBlockerActive = legacyInstrumentationBlockerActive;
@@ -257,7 +281,23 @@ public final class AntiAgent {
         }
 
         public boolean jfrAgentMonitorActive() {
-            return jfrAgentMonitorActive;
+            return runtimeEventMonitorActive;
+        }
+
+        public boolean runtimeEventMonitorActive() {
+            return runtimeEventMonitorActive;
+        }
+
+        public boolean runtimeEventMonitorFailed() {
+            return runtimeEventMonitorFailed;
+        }
+
+        public boolean runtimeTransformationObserved() {
+            return runtimeTransformationObserved;
+        }
+
+        public boolean coreRuntimeTransformationObserved() {
+            return coreRuntimeTransformationObserved;
         }
 
         public boolean legacyInstrumentationBlockerSupported() {
@@ -282,120 +322,6 @@ public final class AntiAgent {
 
         long environmentToken() {
             return environmentToken;
-        }
-    }
-
-    private static final class AgentEventMonitor {
-        private final AtomicBoolean observed = new AtomicBoolean();
-        private final AtomicBoolean active = new AtomicBoolean();
-        private volatile long lastPoll;
-
-        static AgentEventMonitor start() {
-            AgentEventMonitor monitor = new AgentEventMonitor();
-            monitor.active.set(supportsEvent("jdk.JavaAgent") || supportsEvent("jdk.NativeAgent"));
-            return monitor;
-        }
-
-        boolean observed() {
-            return observed.get();
-        }
-
-        boolean active() {
-            return active.get();
-        }
-
-        void poll() {
-            if (!active()) {
-                return;
-            }
-
-            long now = System.currentTimeMillis();
-            if (now - lastPoll < 2000L) {
-                return;
-            }
-            lastPoll = now;
-
-            Path path = null;
-            Object recording = null;
-            Object file = null;
-            try {
-                Class<?> recordingType = Class.forName("jdk.jfr.Recording");
-                recording = recordingType.getConstructor().newInstance();
-                Method enable = recordingType.getMethod("enable", String.class);
-                if (supportsEvent("jdk.JavaAgent")) {
-                    enable.invoke(recording, "jdk.JavaAgent");
-                }
-                if (supportsEvent("jdk.NativeAgent")) {
-                    enable.invoke(recording, "jdk.NativeAgent");
-                }
-                recordingType.getMethod("start").invoke(recording);
-                recordingType.getMethod("stop").invoke(recording);
-
-                File temporary = File.createTempFile("anti-agent-", ".jfr");
-                path = temporary.toPath();
-                recordingType.getMethod("dump", Path.class).invoke(recording, path);
-                recordingType.getMethod("close").invoke(recording);
-                recording = null;
-
-                Class<?> fileType = Class.forName("jdk.jfr.consumer.RecordingFile");
-                file = fileType.getConstructor(Path.class).newInstance(path);
-                Method hasMore = fileType.getMethod("hasMoreEvents");
-                Method read = fileType.getMethod("readEvent");
-                while (Boolean.TRUE.equals(hasMore.invoke(file))) {
-                    Object event = read.invoke(file);
-                    Object eventType = event.getClass().getMethod("getEventType").invoke(event);
-                    String name = String.valueOf(eventType.getClass().getMethod("getName").invoke(eventType));
-                    if (!"jdk.JavaAgent".equals(name) && !"jdk.NativeAgent".equals(name)) {
-                        continue;
-                    }
-                    Object dynamic = event.getClass().getMethod("getValue", String.class).invoke(event, "dynamic");
-                    if (Boolean.TRUE.equals(dynamic)) {
-                        observed.set(true);
-                    }
-                }
-                fileType.getMethod("close").invoke(file);
-                file = null;
-            } catch (Throwable ignored) {
-            } finally {
-                if (file != null) {
-                    try {
-                        file.getClass().getMethod("close").invoke(file);
-                    } catch (Throwable ignored) {
-                    }
-                }
-                if (recording != null) {
-                    try {
-                        recording.getClass().getMethod("close").invoke(recording);
-                    } catch (Throwable ignored) {
-                    }
-                }
-                if (path != null) {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (Throwable ignored) {
-                    }
-                }
-            }
-        }
-
-        void close() {
-            active.set(false);
-        }
-
-        private static boolean supportsEvent(String expected) {
-            try {
-                Class<?> recorderType = Class.forName("jdk.jfr.FlightRecorder");
-                Object recorder = recorderType.getMethod("getFlightRecorder").invoke(null);
-                List<?> types = (List<?>) recorderType.getMethod("getEventTypes").invoke(recorder);
-                for (Object type : types) {
-                    String name = String.valueOf(type.getClass().getMethod("getName").invoke(type));
-                    if (expected.equals(name)) {
-                        return true;
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-            return false;
         }
     }
 }
