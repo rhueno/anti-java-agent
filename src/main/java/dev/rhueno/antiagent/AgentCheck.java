@@ -141,7 +141,20 @@ final class AgentCheck {
         return new File("/tmp", ".java_pid" + pid).exists();
     }
 
-    private static String pid() {
+    static String pid() {
+        try {
+            Class<?> processHandle = Class.forName("java.lang.ProcessHandle");
+            Object current = processHandle.getMethod("current").invoke(null);
+            Object value = processHandle.getMethod("pid").invoke(current);
+            if (value instanceof Number) {
+                long pid = ((Number) value).longValue();
+                if (pid > 0L) {
+                    return Long.toString(pid);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
         String name = ManagementFactory.getRuntimeMXBean().getName();
         int separator = name.indexOf('@');
         String value = separator < 0 ? name : name.substring(0, separator);
