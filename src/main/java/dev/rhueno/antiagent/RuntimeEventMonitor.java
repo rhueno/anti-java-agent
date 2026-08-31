@@ -5,7 +5,6 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,14 +23,9 @@ final class RuntimeEventMonitor {
     private final AtomicBoolean agentObserved = new AtomicBoolean();
     private final AtomicBoolean transformationObserved = new AtomicBoolean();
     private final AtomicBoolean coreTransformationObserved = new AtomicBoolean();
-    private final Set<String> enabledEvents;
     private volatile Object recording;
     private volatile Class<?> recordingType;
     private volatile long lastPollNanos;
-
-    private RuntimeEventMonitor(Set<String> enabledEvents) {
-        this.enabledEvents = enabledEvents;
-    }
 
     static RuntimeEventMonitor start() {
         Set<String> available = availableEvents();
@@ -42,7 +36,7 @@ final class RuntimeEventMonitor {
         addIfPresent(available, enabled, REDEFINE_CLASSES);
         addIfPresent(available, enabled, RETRANSFORM_CLASSES);
 
-        RuntimeEventMonitor monitor = new RuntimeEventMonitor(enabled);
+        RuntimeEventMonitor monitor = new RuntimeEventMonitor();
         if (enabled.isEmpty()) {
             return monitor;
         }
@@ -50,14 +44,15 @@ final class RuntimeEventMonitor {
         try {
             Class<?> type = Class.forName("jdk.jfr.Recording");
             Object recording = type.getConstructor().newInstance();
+            monitor.recordingType = type;
+            monitor.recording = recording;
+
             Method enable = type.getMethod("enable", String.class);
             for (String event : enabled) {
                 enable.invoke(recording, event);
             }
             configure(type, recording);
             type.getMethod("start").invoke(recording);
-            monitor.recordingType = type;
-            monitor.recording = recording;
             monitor.active.set(true);
         } catch (Throwable error) {
             monitor.failed.set(true);
@@ -163,6 +158,7 @@ final class RuntimeEventMonitor {
     private void closeRecording() {
         Object current = recording;
         recording = null;
+        recordingType = null;
         if (current == null) {
             return;
         }
