@@ -60,6 +60,11 @@ final class AgentCheck {
             dynamicAgentDisabled = true;
         }
 
+        boolean attachTriggerObserved = observeAttachTrigger();
+        if (attachTriggerObserved) {
+            findings.add("attach trigger file observed");
+        }
+
         return new Result(
                 javaAgent,
                 nativeAgent,
@@ -68,6 +73,7 @@ final class AgentCheck {
                 attachDisabled,
                 dynamicAgentDisabled,
                 attachListenerRequested,
+                attachTriggerObserved,
                 observeAttachListener(),
                 Collections.unmodifiableList(new ArrayList<String>(findings))
         );
@@ -141,6 +147,28 @@ final class AgentCheck {
         return new File("/tmp", ".java_pid" + pid).exists();
     }
 
+    private static boolean observeAttachTrigger() {
+        if (!isUnixLike()) {
+            return false;
+        }
+
+        String pid = pid();
+        if (pid == null) {
+            return false;
+        }
+
+        String name = ".attach_pid" + pid;
+        if (new File(name).exists()) {
+            return true;
+        }
+
+        String temporary = System.getProperty("java.io.tmpdir");
+        if (temporary != null && new File(temporary, name).exists()) {
+            return true;
+        }
+        return new File("/tmp", name).exists();
+    }
+
     static String pid() {
         try {
             Class<?> processHandle = Class.forName("java.lang.ProcessHandle");
@@ -182,10 +210,11 @@ final class AgentCheck {
         final boolean attachDisabled;
         final boolean dynamicAgentDisabled;
         final boolean attachListenerRequested;
+        final boolean attachTriggerObserved;
         final boolean attachListenerObserved;
         final List<String> findings;
 
-        Result(boolean javaAgent, boolean nativeAgent, boolean dynamicAgentEnabled, boolean selfAttachEnabled, boolean attachDisabled, boolean dynamicAgentDisabled, boolean attachListenerRequested, boolean attachListenerObserved, List<String> findings) {
+        Result(boolean javaAgent, boolean nativeAgent, boolean dynamicAgentEnabled, boolean selfAttachEnabled, boolean attachDisabled, boolean dynamicAgentDisabled, boolean attachListenerRequested, boolean attachTriggerObserved, boolean attachListenerObserved, List<String> findings) {
             this.javaAgent = javaAgent;
             this.nativeAgent = nativeAgent;
             this.dynamicAgentEnabled = dynamicAgentEnabled;
@@ -193,6 +222,7 @@ final class AgentCheck {
             this.attachDisabled = attachDisabled;
             this.dynamicAgentDisabled = dynamicAgentDisabled;
             this.attachListenerRequested = attachListenerRequested;
+            this.attachTriggerObserved = attachTriggerObserved;
             this.attachListenerObserved = attachListenerObserved;
             this.findings = findings;
         }
