@@ -19,6 +19,7 @@ final class RuntimeEventMonitor {
     private static final String CORE_PREFIX = "dev.rhueno.antiagent.";
 
     private final AtomicBoolean active = new AtomicBoolean();
+    private final AtomicBoolean failed = new AtomicBoolean();
     private final AtomicBoolean agentObserved = new AtomicBoolean();
     private final AtomicBoolean transformationObserved = new AtomicBoolean();
     private final AtomicBoolean coreTransformationObserved = new AtomicBoolean();
@@ -53,6 +54,7 @@ final class RuntimeEventMonitor {
             monitor.recording = recording;
             monitor.active.set(true);
         } catch (Throwable ignored) {
+            monitor.failed.set(true);
             monitor.closeRecording();
         }
         return monitor;
@@ -60,6 +62,10 @@ final class RuntimeEventMonitor {
 
     boolean active() {
         return active.get();
+    }
+
+    boolean failed() {
+        return failed.get();
     }
 
     boolean agentObserved() {
@@ -103,6 +109,9 @@ final class RuntimeEventMonitor {
             fileType.getMethod("close").invoke(file);
             file = null;
         } catch (Throwable ignored) {
+            failed.set(true);
+            active.set(false);
+            closeRecording();
         } finally {
             closeFile(file);
             delete(path);
