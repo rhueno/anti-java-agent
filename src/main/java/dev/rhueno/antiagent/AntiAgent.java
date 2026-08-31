@@ -1,9 +1,5 @@
 package dev.rhueno.antiagent;
 
-import java.lang.reflect.Method;
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -17,7 +13,7 @@ public final class AntiAgent {
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
     private static final AtomicReference<Snapshot> SNAPSHOT = new AtomicReference<Snapshot>();
     private static final Integrity.Baseline BASELINE = Integrity.capture();
-    private static volatile AgentEventMonitor agentEventMonitor;
+    private static volatile RuntimeEventMonitor runtimeEventMonitor;
     private static volatile Thread watchdog;
     private static volatile Boolean attachListenerAtInstall;
     private static volatile LegacyBlocker.Result legacyBlocker;
@@ -39,7 +35,7 @@ public final class AntiAgent {
             RUNNING.set(true);
             legacyBlockerRequested = enableLegacyBlocker;
             legacyBlocker = enableLegacyBlocker ? LegacyBlocker.install() : LegacyBlocker.disabled();
-            agentEventMonitor = AgentEventMonitor.start();
+            runtimeEventMonitor = RuntimeEventMonitor.start();
             refresh();
             watchdog = new Thread(new Runnable() {
                 @Override
@@ -114,7 +110,7 @@ public final class AntiAgent {
         if (current != null) {
             current.interrupt();
         }
-        AgentEventMonitor monitor = agentEventMonitor;
+        RuntimeEventMonitor monitor = runtimeEventMonitor;
         if (monitor != null) {
             monitor.close();
         }
@@ -123,11 +119,11 @@ public final class AntiAgent {
     private static void refresh() {
         AgentCheck.Result check = AgentCheck.inspect();
         Integrity.Result integrity = Integrity.verify(BASELINE);
-        AgentEventMonitor monitor = agentEventMonitor;
+        RuntimeEventMonitor monitor = runtimeEventMonitor;
         if (monitor != null) {
             monitor.poll();
         }
-        boolean agentEvent = monitor != null && monitor.observed();
+        boolean agentEvent = monitor != null && monitor.agentObserved();
         boolean monitorActive = monitor != null && monitor.active();
         LegacyBlocker.Result blocker = legacyBlocker;
         boolean legacyBlockerSupported = blocker != null && blocker.supported;
@@ -282,120 +278,6 @@ public final class AntiAgent {
 
         long environmentToken() {
             return environmentToken;
-        }
-    }
-
-    private static final class AgentEventMonitor {
-        private final AtomicBoolean observed = new AtomicBoolean();
-        private final AtomicBoolean active = new AtomicBoolean();
-        private volatile long lastPoll;
-
-        static AgentEventMonitor start() {
-            AgentEventMonitor monitor = new AgentEventMonitor();
-            monitor.active.set(supportsEvent("jdk.JavaAgent") || supportsEvent("jdk.NativeAgent"));
-            return monitor;
-        }
-
-        boolean observed() {
-            return observed.get();
-        }
-
-        boolean active() {
-            return active.get();
-        }
-
-        void poll() {
-            if (!active()) {
-                return;
-            }
-
-            long now = System.currentTimeMillis();
-            if (now - lastPoll < 2000L) {
-                return;
-            }
-            lastPoll = now;
-
-            Path path = null;
-            Object recording = null;
-            Object file = null;
-            try {
-                Class<?> recordingType = Class.forName("jdk.jfr.Recording");
-                recording = recordingType.getConstructor().newInstance();
-                Method enable = recordingType.getMethod("enable", String.class);
-                if (supportsEvent("jdk.JavaAgent")) {
-                    enable.invoke(recording, "jdk.JavaAgent");
-                }
-                if (supportsEvent("jdk.NativeAgent")) {
-                    enable.invoke(recording, "jdk.NativeAgent");
-                }
-                recordingType.getMethod("start").invoke(recording);
-                recordingType.getMethod("stop").invoke(recording);
-
-                File temporary = File.createTempFile("anti-agent-", ".jfr");
-                path = temporary.toPath();
-                recordingType.getMethod("dump", Path.class).invoke(recording, path);
-                recordingType.getMethod("close").invoke(recording);
-                recording = null;
-
-                Class<?> fileType = Class.forName("jdk.jfr.consumer.RecordingFile");
-                file = fileType.getConstructor(Path.class).newInstance(path);
-                Method hasMore = fileType.getMethod("hasMoreEvents");
-                Method read = fileType.getMethod("readEvent");
-                while (Boolean.TRUE.equals(hasMore.invoke(file))) {
-                    Object event = read.invoke(file);
-                    Object eventType = event.getClass().getMethod("getEventType").invoke(event);
-                    String name = String.valueOf(eventType.getClass().getMethod("getName").invoke(eventType));
-                    if (!"jdk.JavaAgent".equals(name) && !"jdk.NativeAgent".equals(name)) {
-                        continue;
-                    }
-                    Object dynamic = event.getClass().getMethod("getValue", String.class).invoke(event, "dynamic");
-                    if (Boolean.TRUE.equals(dynamic)) {
-                        observed.set(true);
-                    }
-                }
-                fileType.getMethod("close").invoke(file);
-                file = null;
-            } catch (Throwable ignored) {
-            } finally {
-                if (file != null) {
-                    try {
-                        file.getClass().getMethod("close").invoke(file);
-                    } catch (Throwable ignored) {
-                    }
-                }
-                if (recording != null) {
-                    try {
-                        recording.getClass().getMethod("close").invoke(recording);
-                    } catch (Throwable ignored) {
-                    }
-                }
-                if (path != null) {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (Throwable ignored) {
-                    }
-                }
-            }
-        }
-
-        void close() {
-            active.set(false);
-        }
-
-        private static boolean supportsEvent(String expected) {
-            try {
-                Class<?> recorderType = Class.forName("jdk.jfr.FlightRecorder");
-                Object recorder = recorderType.getMethod("getFlightRecorder").invoke(null);
-                List<?> types = (List<?>) recorderType.getMethod("getEventTypes").invoke(recorder);
-                for (Object type : types) {
-                    String name = String.valueOf(type.getClass().getMethod("getName").invoke(type));
-                    if (expected.equals(name)) {
-                        return true;
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-            return false;
         }
     }
 }
