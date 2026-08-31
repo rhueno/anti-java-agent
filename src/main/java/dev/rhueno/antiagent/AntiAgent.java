@@ -169,7 +169,7 @@ public final class AntiAgent {
         if (integrity.unsupported) {
             state = State.UNSUPPORTED;
         }
-        if (check.dynamicAgentEnabled || check.selfAttachEnabled || check.attachListenerRequested || attachListenerPresentAtInstall || attachListenerAppeared || runtimeTransformation || monitorFailed) {
+        if (check.dynamicAgentEnabled || check.selfAttachEnabled || check.attachListenerRequested || check.attachTriggerObserved || attachListenerPresentAtInstall || attachListenerAppeared || runtimeTransformation || monitorFailed) {
             state = State.SUSPICIOUS;
         }
         if (check.javaAgent || check.nativeAgent || agentEvent || coreRuntimeTransformation || (!integrity.intact && !integrity.unsupported)) {
@@ -180,6 +180,7 @@ public final class AntiAgent {
         environmentToken ^= check.attachDisabled ? 0x243f6a8885a308d3L : 0x13198a2e03707344L;
         environmentToken ^= check.dynamicAgentDisabled ? 0xa4093822299f31d0L : 0x082efa98ec4e6c89L;
         environmentToken ^= check.attachListenerRequested ? 0x299f31d0082efa98L : 0xec4e6c89452821e6L;
+        environmentToken ^= check.attachTriggerObserved ? 0xd4e12c77a96b53f1L : 0x5a1f9c2d8e7034b6L;
         environmentToken ^= monitorActive ? 0x452821e638d01377L : 0xbe5466cf34e90c6cL;
         environmentToken ^= monitorFailed ? 0x3f84d5b5b5470917L : 0x9216d5d98979fb1bL;
         environmentToken ^= agentEvent ? 0xd1310ba698dfb5acL : 0x2ffd72dbd01adfb7L;
