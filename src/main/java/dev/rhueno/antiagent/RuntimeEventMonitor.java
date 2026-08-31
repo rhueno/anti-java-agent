@@ -13,9 +13,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class RuntimeEventMonitor {
     private static final String JAVA_AGENT = "jdk.JavaAgent";
     private static final String NATIVE_AGENT = "jdk.NativeAgent";
+    private static final String CLASS_REDEFINITION = "jdk.ClassRedefinition";
+    private static final String REDEFINE_CLASSES = "jdk.RedefineClasses";
+    private static final String RETRANSFORM_CLASSES = "jdk.RetransformClasses";
+    private static final String CORE_PREFIX = "dev.rhueno.antiagent.";
 
     private final AtomicBoolean active = new AtomicBoolean();
     private final AtomicBoolean agentObserved = new AtomicBoolean();
+    private final AtomicBoolean transformationObserved = new AtomicBoolean();
+    private final AtomicBoolean coreTransformationObserved = new AtomicBoolean();
     private volatile Object recording;
     private volatile Class<?> recordingType;
     private volatile long lastPollNanos;
@@ -25,6 +31,9 @@ final class RuntimeEventMonitor {
         Set<String> enabled = new HashSet<String>();
         addIfPresent(available, enabled, JAVA_AGENT);
         addIfPresent(available, enabled, NATIVE_AGENT);
+        addIfPresent(available, enabled, CLASS_REDEFINITION);
+        addIfPresent(available, enabled, REDEFINE_CLASSES);
+        addIfPresent(available, enabled, RETRANSFORM_CLASSES);
 
         RuntimeEventMonitor monitor = new RuntimeEventMonitor();
         if (enabled.isEmpty()) {
@@ -57,6 +66,14 @@ final class RuntimeEventMonitor {
         return agentObserved.get();
     }
 
+    boolean transformationObserved() {
+        return transformationObserved.get();
+    }
+
+    boolean coreTransformationObserved() {
+        return coreTransformationObserved.get();
+    }
+
     synchronized void poll() {
         if (!active()) {
             return;
@@ -80,12 +97,7 @@ final class RuntimeEventMonitor {
             Method hasMore = fileType.getMethod("hasMoreEvents");
             Method read = fileType.getMethod("readEvent");
             while (Boolean.TRUE.equals(hasMore.invoke(file))) {
-                Object event = read.invoke(file);
-                Object eventType = event.getClass().getMethod("getEventType").invoke(event);
-                String name = String.valueOf(eventType.getClass().getMethod("getName").invoke(eventType));
-                if (JAVA_AGENT.equals(name) || NATIVE_AGENT.equals(name)) {
-                    agentObserved.set(true);
-                }
+                inspect(read.invoke(file));
             }
 
             fileType.getMethod("close").invoke(file);
@@ -94,6 +106,36 @@ final class RuntimeEventMonitor {
         } finally {
             closeFile(file);
             delete(path);
+        }
+    }
+
+    private void inspect(Object event) throws Exception {
+        Object eventType = event.getClass().getMethod("getEventType").invoke(event);
+        String name = String.valueOf(eventType.getClass().getMethod("getName").invoke(eventType));
+
+        if (JAVA_AGENT.equals(name) || NATIVE_AGENT.equals(name)) {
+            agentObserved.set(true);
+            return;
+        }
+
+        if (REDEFINE_CLASSES.equals(name) || RETRANSFORM_CLASSES.equals(name)) {
+            transformationObserved.set(true);
+            return;
+        }
+
+        if (!CLASS_REDEFINITION.equals(name)) {
+            return;
+        }
+
+        transformationObserved.set(true);
+        Object recordedClass = event.getClass().getMethod("getValue", String.class).invoke(event, "redefinedClass");
+        if (recordedClass == null) {
+            return;
+        }
+
+        String className = String.valueOf(recordedClass.getClass().getMethod("getName").invoke(recordedClass));
+        if (className.startsWith(CORE_PREFIX)) {
+            coreTransformationObserved.set(true);
         }
     }
 
